@@ -5,6 +5,7 @@ import datetime
 import streamlit.components.v1 as components
 import time
 import gspread
+import io  # 🌟 新增：用來在記憶體中打包 Excel 檔案的模組
 
 st.set_page_config(page_title="工程進度管理系統", layout="wide")
 
@@ -245,9 +246,7 @@ if current_project == "🌐 總覽所有工項":
         temp_df['預定完成日'] = temp_df['預定開始日'] + pd.to_timedelta(pd.to_numeric(temp_df['預定工期(天)'], errors='coerce') - 1, unit='D')
         temp_df['實際完成日'] = temp_df['實際開始日'] + pd.to_timedelta(pd.to_numeric(temp_df['實際工期(天)'], errors='coerce') - 1, unit='D')
         
-        # 🌟 邏輯升級：過濾掉沒有預定日期的空白列
         valid_tasks = temp_df.dropna(subset=['預定開始日'])
-        
         if valid_tasks.empty:
             continue
             
@@ -255,7 +254,6 @@ if current_project == "🌐 總覽所有工項":
         plan_end = valid_tasks['預定完成日'].max()
         act_start = valid_tasks['實際開始日'].min()
         
-        # 🌟 邏輯升級：必須「所有細項」都有實際完成日，這個大工項才算真正完工！
         is_project_finished = not valid_tasks['實際完成日'].isna().any()
         act_end = valid_tasks['實際完成日'].max() if is_project_finished else pd.NaT
         
@@ -360,12 +358,17 @@ with st.sidebar:
                 time.sleep(1.5)
                 st.rerun()
 
-        csv_data = display_df.to_csv(index=False, encoding='utf-8-sig')
+        # 🌟 升級版：將 DataFrame 轉換為原生 Excel 格式 (.xlsx)
+        excel_buffer = io.BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+            display_df.to_excel(writer, index=False, sheet_name='進度表')
+        excel_data = excel_buffer.getvalue()
+
         col2.download_button(
             label="📥 下載完整備份", 
-            data=csv_data, 
-            file_name=f"{current_project}_完整進度表.csv", 
-            mime="text/csv", 
+            data=excel_data, 
+            file_name=f"{current_project}_完整進度表.xlsx", # 副檔名改為 xlsx
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
             use_container_width=True
         )
 
@@ -386,12 +389,17 @@ with st.sidebar:
         col_a, col_b = st.columns(2)
         
         if 'df_overview' in locals() and not df_overview.empty:
-            csv_overview = display_df.to_csv(index=False, encoding='utf-8-sig')
+            # 🌟 升級版：將總覽表轉換為原生 Excel 格式 (.xlsx)
+            overview_buffer = io.BytesIO()
+            with pd.ExcelWriter(overview_buffer, engine='openpyxl') as writer:
+                display_df.to_excel(writer, index=False, sheet_name='總覽')
+            overview_data = overview_buffer.getvalue()
+
             col_a.download_button(
                 label="📥 下載總覽報表", 
-                data=csv_overview, 
-                file_name="台1替_全工項總覽進度表.csv", 
-                mime="text/csv", 
+                data=overview_data, 
+                file_name="台1替_全工項總覽進度表.xlsx", # 副檔名改為 xlsx
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
                 use_container_width=True
             )
         
