@@ -19,7 +19,7 @@ print_css = """
 """
 st.markdown(print_css, unsafe_allow_html=True)
 
-# ====== 🤖 狀態自動診斷模組 (取代 Excel 的複雜 IF 公式) ======
+# ====== 🤖 狀態自動診斷模組 ======
 def evaluate_status(row):
     plan_start = row['預定開始日']
     plan_end = row['預定完成日']
@@ -30,7 +30,6 @@ def evaluate_status(row):
     if pd.isna(plan_start) or pd.isna(plan_end):
         return ""
 
-    # 情境 1: 已經完工 (有實際完成日)
     if pd.notna(act_end):
         delay = (act_end - plan_end).days
         if delay > 0:
@@ -39,17 +38,13 @@ def evaluate_status(row):
             return f"🟢 提前完工 {abs(delay)} 天"
         else:
             return "✅ 如期完工"
-            
-    # 情境 2: 尚未完工
     else:
-        # 狀態 2a: 還沒開工
         if pd.isna(act_start):
             if today < plan_start:
                 return "⚪ 未開工"
             else:
                 delay = (today - plan_start).days
                 return f"🟡 延遲開工 {delay} 天"
-        # 狀態 2b: 已經開工 (施工中)
         else:
             if today > plan_end:
                 delay = (today - plan_end).days
@@ -355,8 +350,15 @@ with st.sidebar:
                 time.sleep(1.5)
                 st.rerun()
 
-        csv_data = edited_df.to_csv(index=False, encoding='utf-8-sig')
-        col2.download_button(label="📥 下載備份", data=csv_data, file_name=f"{current_project}_進度表.csv", mime="text/csv", use_container_width=True)
+        # 🌟 單一工項的下載按鈕升級：改為下載 display_df (包含所有計算結果與狀態評估)
+        csv_data = display_df.to_csv(index=False, encoding='utf-8-sig')
+        col2.download_button(
+            label="📥 下載完整備份", 
+            data=csv_data, 
+            file_name=f"{current_project}_完整進度表.csv", 
+            mime="text/csv", 
+            use_container_width=True
+        )
 
         if col3.button("↩️ 復原", use_container_width=True):
             st.session_state.projects[current_project] = st.session_state.saved_projects[current_project].copy()
@@ -370,9 +372,21 @@ with st.sidebar:
             
         st.divider()
     
+    # 🌟 總覽頁面的側邊欄升級：新增「下載總覽報表」按鈕
     elif current_project == "🌐 總覽所有工項":
         st.write("🛠️ **總覽操作**")
-        if st.button("🖨️ 列印總覽圖表", use_container_width=True):
+        col_a, col_b = st.columns(2)
+        
+        csv_overview = display_df.to_csv(index=False, encoding='utf-8-sig')
+        col_a.download_button(
+            label="📥 下載總覽報表", 
+            data=csv_overview, 
+            file_name="台1替_全工項總覽進度表.csv", 
+            mime="text/csv", 
+            use_container_width=True
+        )
+        
+        if col_b.button("🖨️ 列印圖表", use_container_width=True):
             unique_key = str(time.time())
             components.html(f"<script>window.parent.print();</script><span style='display:none;'>{unique_key}</span>", height=0)
         st.divider()
