@@ -8,6 +8,7 @@ import gspread
 
 st.set_page_config(page_title="工程進度管理系統", layout="wide")
 
+# ====== 🌟 隱藏列印時的側邊欄 ======
 print_css = """
 <style>
 @media print {
@@ -18,6 +19,45 @@ print_css = """
 """
 st.markdown(print_css, unsafe_allow_html=True)
 
+# ====== 🤖 狀態自動診斷模組 (取代 Excel 的複雜 IF 公式) ======
+def evaluate_status(row):
+    plan_start = row['預定開始日']
+    plan_end = row['預定完成日']
+    act_start = row['實際開始日']
+    act_end = row['實際完成日']
+    today = pd.Timestamp(datetime.date.today())
+
+    if pd.isna(plan_start) or pd.isna(plan_end):
+        return ""
+
+    # 情境 1: 已經完工 (有實際完成日)
+    if pd.notna(act_end):
+        delay = (act_end - plan_end).days
+        if delay > 0:
+            return f"🔴 延遲完工 {delay} 天"
+        elif delay < 0:
+            return f"🟢 提前完工 {abs(delay)} 天"
+        else:
+            return "✅ 如期完工"
+            
+    # 情境 2: 尚未完工
+    else:
+        # 狀態 2a: 還沒開工
+        if pd.isna(act_start):
+            if today < plan_start:
+                return "⚪ 未開工"
+            else:
+                delay = (today - plan_start).days
+                return f"🟡 延遲開工 {delay} 天"
+        # 狀態 2b: 已經開工 (施工中)
+        else:
+            if today > plan_end:
+                delay = (today - plan_end).days
+                return f"🔴 進度落後 {delay} 天"
+            else:
+                return "🔵 施工中"
+
+# ====== 🎨 將甘特圖打包成專屬繪圖功能 ======
 def draw_gantt_chart(df):
     plot_list = []
     today = pd.Timestamp(datetime.date.today())
@@ -118,18 +158,16 @@ def draw_gantt_chart(df):
     st.plotly_chart(fig, use_container_width=False)
 
 
-# ====== ☁️ 雲端資料庫連線設定 (🌟 大魔王關卡升級版) ======
+# ====== ☁️ 雲端資料庫連線設定 ======
 SHEET_NAME = "工程專案進度資料庫" 
 
 @st.cache_resource
 def get_google_sheet_connection():
     try:
-        # 1. 優先嘗試從 Streamlit 雲端的「隱藏機密設定」讀取
         if "gcp_service_account" in st.secrets:
             credentials_dict = dict(st.secrets["gcp_service_account"])
             gc = gspread.service_account_from_dict(credentials_dict)
             return gc.open(SHEET_NAME)
-        # 2. 如果在自己電腦上，就讀取實體的 secrets.json 檔案
         else:
             gc = gspread.service_account(filename="secrets.json")
             return gc.open(SHEET_NAME)
@@ -232,8 +270,11 @@ if current_project == "🌐 總覽所有工項":
         
     df_overview = pd.DataFrame(overview_records)
     
+    # 🌟 總覽表套用自動診斷模組
+    df_overview['狀態評估'] = df_overview.apply(evaluate_status, axis=1)
+    
     st.subheader("📊 1. 總覽時間表")
-    display_df = df_overview[['工程項目', '預定開始日', '預定完成日', '實際開始日', '實際完成日']].copy()
+    display_df = df_overview[['工程項目', '預定開始日', '預定完成日', '實際開始日', '實際完成日', '狀態評估']].copy()
     display_df['預定開始日'] = display_df['預定開始日'].dt.strftime('%Y-%m-%d').fillna('')
     display_df['預定完成日'] = display_df['預定完成日'].dt.strftime('%Y-%m-%d').fillna('')
     display_df['實際開始日'] = display_df['實際開始日'].dt.strftime('%Y-%m-%d').fillna('')
@@ -271,8 +312,11 @@ elif current_project:
     df['預定完成日'] = df['預定開始日'] + pd.to_timedelta(df['預定工期(天)'] - 1, unit='D')
     df['實際完成日'] = df['實際開始日'] + pd.to_timedelta(df['實際工期(天)'] - 1, unit='D')
 
+    # 🌟 單一工項套用自動診斷模組
+    df['狀態評估'] = df.apply(evaluate_status, axis=1)
+
     st.subheader("📊 2. 系統自動計算結果")
-    display_df = df[['工程項目', '預定開始日', '預定工期(天)', '預定完成日', '實際開始日', '實際完成日']].copy()
+    display_df = df[['工程項目', '預定開始日', '預定工期(天)', '預定完成日', '實際開始日', '實際完成日', '狀態評估']].copy()
     display_df['預定開始日'] = display_df['預定開始日'].dt.strftime('%Y-%m-%d').fillna('')
     display_df['預定完成日'] = display_df['預定完成日'].dt.strftime('%Y-%m-%d').fillna('')
     display_df['實際開始日'] = display_df['實際開始日'].dt.strftime('%Y-%m-%d').fillna('')
