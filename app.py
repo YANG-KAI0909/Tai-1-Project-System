@@ -245,10 +245,19 @@ if current_project == "🌐 總覽所有工項":
         temp_df['預定完成日'] = temp_df['預定開始日'] + pd.to_timedelta(pd.to_numeric(temp_df['預定工期(天)'], errors='coerce') - 1, unit='D')
         temp_df['實際完成日'] = temp_df['實際開始日'] + pd.to_timedelta(pd.to_numeric(temp_df['實際工期(天)'], errors='coerce') - 1, unit='D')
         
-        plan_start = temp_df['預定開始日'].min()
-        plan_end = temp_df['預定完成日'].max()
-        act_start = temp_df['實際開始日'].min()
-        act_end = temp_df['實際完成日'].max()
+        # 🌟 邏輯升級：過濾掉沒有預定日期的空白列
+        valid_tasks = temp_df.dropna(subset=['預定開始日'])
+        
+        if valid_tasks.empty:
+            continue
+            
+        plan_start = valid_tasks['預定開始日'].min()
+        plan_end = valid_tasks['預定完成日'].max()
+        act_start = valid_tasks['實際開始日'].min()
+        
+        # 🌟 邏輯升級：必須「所有細項」都有實際完成日，這個大工項才算真正完工！
+        is_project_finished = not valid_tasks['實際完成日'].isna().any()
+        act_end = valid_tasks['實際完成日'].max() if is_project_finished else pd.NaT
         
         plan_dur = (plan_end - plan_start).days + 1 if pd.notna(plan_start) and pd.notna(plan_end) else None
         act_dur = (act_end - act_start).days + 1 if pd.notna(act_start) and pd.notna(act_end) else None
@@ -265,20 +274,22 @@ if current_project == "🌐 總覽所有工項":
         
     df_overview = pd.DataFrame(overview_records)
     
-    # 🌟 總覽表套用自動診斷模組
-    df_overview['狀態評估'] = df_overview.apply(evaluate_status, axis=1)
-    
-    st.subheader("📊 1. 總覽時間表")
-    display_df = df_overview[['工程項目', '預定開始日', '預定完成日', '實際開始日', '實際完成日', '狀態評估']].copy()
-    display_df['預定開始日'] = display_df['預定開始日'].dt.strftime('%Y-%m-%d').fillna('')
-    display_df['預定完成日'] = display_df['預定完成日'].dt.strftime('%Y-%m-%d').fillna('')
-    display_df['實際開始日'] = display_df['實際開始日'].dt.strftime('%Y-%m-%d').fillna('')
-    display_df['實際完成日'] = display_df['實際完成日'].dt.strftime('%Y-%m-%d').fillna('')
-    display_df.rename(columns={'工程項目': '工項名稱'}, inplace=True)
-    st.dataframe(display_df, use_container_width=True)
+    if not df_overview.empty:
+        df_overview['狀態評估'] = df_overview.apply(evaluate_status, axis=1)
+        
+        st.subheader("📊 1. 總覽時間表")
+        display_df = df_overview[['工程項目', '預定開始日', '預定完成日', '實際開始日', '實際完成日', '狀態評估']].copy()
+        display_df['預定開始日'] = display_df['預定開始日'].dt.strftime('%Y-%m-%d').fillna('')
+        display_df['預定完成日'] = display_df['預定完成日'].dt.strftime('%Y-%m-%d').fillna('')
+        display_df['實際開始日'] = display_df['實際開始日'].dt.strftime('%Y-%m-%d').fillna('')
+        display_df['實際完成日'] = display_df['實際完成日'].dt.strftime('%Y-%m-%d').fillna('')
+        display_df.rename(columns={'工程項目': '工項名稱'}, inplace=True)
+        st.dataframe(display_df, use_container_width=True)
 
-    st.subheader("📈 2. 跨工項總覽甘特圖")
-    draw_gantt_chart(df_overview)
+        st.subheader("📈 2. 跨工項總覽甘特圖")
+        draw_gantt_chart(df_overview)
+    else:
+        st.info("目前尚無有效資料可供總覽。")
 
 elif current_project:
     st.title(f"🚧 {current_project} - 進度管理儀表板")
@@ -307,7 +318,6 @@ elif current_project:
     df['預定完成日'] = df['預定開始日'] + pd.to_timedelta(df['預定工期(天)'] - 1, unit='D')
     df['實際完成日'] = df['實際開始日'] + pd.to_timedelta(df['實際工期(天)'] - 1, unit='D')
 
-    # 🌟 單一工項套用自動診斷模組
     df['狀態評估'] = df.apply(evaluate_status, axis=1)
 
     st.subheader("📊 2. 系統自動計算結果")
@@ -350,7 +360,6 @@ with st.sidebar:
                 time.sleep(1.5)
                 st.rerun()
 
-        # 🌟 單一工項的下載按鈕升級：改為下載 display_df (包含所有計算結果與狀態評估)
         csv_data = display_df.to_csv(index=False, encoding='utf-8-sig')
         col2.download_button(
             label="📥 下載完整備份", 
@@ -372,19 +381,19 @@ with st.sidebar:
             
         st.divider()
     
-    # 🌟 總覽頁面的側邊欄升級：新增「下載總覽報表」按鈕
     elif current_project == "🌐 總覽所有工項":
         st.write("🛠️ **總覽操作**")
         col_a, col_b = st.columns(2)
         
-        csv_overview = display_df.to_csv(index=False, encoding='utf-8-sig')
-        col_a.download_button(
-            label="📥 下載總覽報表", 
-            data=csv_overview, 
-            file_name="台1替_全工項總覽進度表.csv", 
-            mime="text/csv", 
-            use_container_width=True
-        )
+        if 'df_overview' in locals() and not df_overview.empty:
+            csv_overview = display_df.to_csv(index=False, encoding='utf-8-sig')
+            col_a.download_button(
+                label="📥 下載總覽報表", 
+                data=csv_overview, 
+                file_name="台1替_全工項總覽進度表.csv", 
+                mime="text/csv", 
+                use_container_width=True
+            )
         
         if col_b.button("🖨️ 列印圖表", use_container_width=True):
             unique_key = str(time.time())
