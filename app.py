@@ -5,7 +5,7 @@ import datetime
 import streamlit.components.v1 as components
 import time
 import gspread
-import io  # 🌟 新增：用來在記憶體中打包 Excel 檔案的模組
+import io
 
 st.set_page_config(page_title="工程進度管理系統", layout="wide")
 
@@ -136,16 +136,20 @@ def draw_gantt_chart(df):
                     orientation='h', name=state, marker_color=color, showlegend=show_lg, width=0.3 
                 ))
 
+    # 🌟 升級區塊：加入星期標示
     date_range = pd.date_range(start=min_date, end=max_date)
     tickvals = date_range.strftime('%Y-%m-%d').tolist()
-    ticktext = [f"{d.month}<br>月<br>{d.day}<br>日" for d in date_range]
+    weekdays_zh = ["一", "二", "三", "四", "五", "六", "日"]  # 定義星期的中文轉換表
+    # 在標籤的最後加上 <br>({星期})
+    ticktext = [f"{d.month}<br>月<br>{d.day}<br>日<br>({weekdays_zh[d.weekday()]})" for d in date_range]
 
     total_days = len(date_range)
     fixed_chart_width = 200 + (total_days * 40)
 
     fig.update_layout(
         barmode='overlay', font=dict(family="Microsoft JhengHei"), xaxis_title="", yaxis_title="", 
-        height=180 + len(df)*60, width=fixed_chart_width, margin=dict(l=10, r=10, t=80, b=10), uirevision='constant' 
+        # 🌟 把 t=80 改成 t=100，讓圖表上方騰出更多空間，裝得下多出來的「星期幾」
+        height=180 + len(df)*60, width=fixed_chart_width, margin=dict(l=10, r=10, t=100, b=10), uirevision='constant' 
     )
     fig.update_yaxes(autorange="reversed", tickfont=dict(size=18, color="black"), showgrid=True, gridcolor='#E0E0E0')
     fig.update_xaxes(type='date', range=x_range, tickmode='array', tickvals=tickvals, ticktext=ticktext, showgrid=True, gridcolor='#E0E0E0', gridwidth=1, tickangle=0, side="top")
@@ -358,7 +362,6 @@ with st.sidebar:
                 time.sleep(1.5)
                 st.rerun()
 
-        # 🌟 升級版：將 DataFrame 轉換為原生 Excel 格式 (.xlsx)
         excel_buffer = io.BytesIO()
         with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
             display_df.to_excel(writer, index=False, sheet_name='進度表')
@@ -367,7 +370,7 @@ with st.sidebar:
         col2.download_button(
             label="📥 下載完整備份", 
             data=excel_data, 
-            file_name=f"{current_project}_完整進度表.xlsx", # 副檔名改為 xlsx
+            file_name=f"{current_project}_完整進度表.xlsx", 
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
             use_container_width=True
         )
@@ -389,7 +392,6 @@ with st.sidebar:
         col_a, col_b = st.columns(2)
         
         if 'df_overview' in locals() and not df_overview.empty:
-            # 🌟 升級版：將總覽表轉換為原生 Excel 格式 (.xlsx)
             overview_buffer = io.BytesIO()
             with pd.ExcelWriter(overview_buffer, engine='openpyxl') as writer:
                 display_df.to_excel(writer, index=False, sheet_name='總覽')
@@ -398,7 +400,7 @@ with st.sidebar:
             col_a.download_button(
                 label="📥 下載總覽報表", 
                 data=overview_data, 
-                file_name="台1替_全工項總覽進度表.xlsx", # 副檔名改為 xlsx
+                file_name="台1替_全工項總覽進度表.xlsx", 
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
                 use_container_width=True
             )
